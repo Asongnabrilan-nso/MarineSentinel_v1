@@ -1,0 +1,9 @@
+name: MarineSentinel
+description: Marine water quality monitoring with real-time sensor fusion and Edge AI debris detection.
+ports: []
+bricks:
+- arduino:video_object_detection:
+    model: yolox-object-detection
+- arduino:streamlit_ui: {}
+- arduino:dbstorage_tsstore: {}
+icon: 🌊

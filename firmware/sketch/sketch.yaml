@@ -1,0 +1,9 @@
+profiles:
+  default:
+    platforms:
+      - platform: arduino:zephyr
+    libraries:
+      - OneWire (2.3.8)
+      - DallasTemperature (3.9.0)
+      - MPU6050_light (1.2.1)
+default_profile: default
