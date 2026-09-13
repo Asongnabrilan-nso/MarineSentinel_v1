@@ -6,46 +6,58 @@ debris detection and a live web dashboard on the MPU.
 
 - **MCU (sketch)** — samples a turbidity sensor and a DS18B20 temperature
   probe every 2 s, fuses accel+gyro from an MPU6050 (QWIIC/I2C) into
-  roll/pitch/yaw at 10 Hz, streams all of it to the MPU over the Router
+  roll/pitch/yaw at 10 Hz, parses GPS NMEA sentences continuously and
+  reports a fix at 1 Hz, streams all of it to the MPU over the Router
   Bridge, and drives an onboard RGB LED (green/red) as a local alert
   indicator.
-- **MPU (Python)** — receives sensor + orientation readings, converts them to
-  engineering units, evaluates alert thresholds (including a capsize/tilt
-  check), stores history in InfluxDB, runs YOLO-X object detection on a USB
-  camera feed to spot floating debris, and publishes everything — including
-  a live 3D capsule orientation view — to a Streamlit dashboard on port
-  `7000`.
+- **MPU (Python)** — receives sensor + orientation + GPS readings, converts
+  them to engineering units, evaluates alert thresholds (including a
+  capsize/tilt check), stores history in InfluxDB, runs YOLO-X (or a custom
+  Edge Impulse) object detection on a USB camera feed to spot floating
+  debris, and publishes everything — including a live 3D capsule
+  orientation view — to a static HTML/JS dashboard served over Socket.IO on
+  port `7000`.
 
 ---
 
 ## 1. Architecture
 
 ```
-┌───────────────────────────┐  Router Bridge (2s / 100ms)  ┌──────────────────────────────┐
-│  MCU (Zephyr sketch)      │  turbidityRaw, tempC         │  MPU (Python / Streamlit)     │
-│  sketch/sketch.ino        │  roll, pitch, yaw            │  python/main.py                │
-│                            │ ───────────────────────────▶│   ├─ sensors.py (state+rules) │
-│  A0  ── turbidity sensor  │                              │   ├─ data_store.py (InfluxDB)  │
-│  D2  ── DS18B20 (1-Wire)  │  ◀─────────────────────────  │   ├─ orientation_view.py       │
-│  QWIIC ── MPU6050 (IMU)   │      set_alert(bool)         │   │    (CSS-3D capsule widget) │
-│    (I2C4 = Wire1)         │                              │   └─ VideoObjectDetection      │
-│  LED3 ── alert indicator  │                              │        (YOLO-X, USB camera)    │
-└───────────────────────────┘                              └──────────────┬────────────────┘
-                                                                            │ :7000
-                                                                            ▼
-                                                                Browser dashboard (LAN),
-                                                                camera + orientation refresh
-                                                                independently at 10 Hz via
-                                                                an st.fragment
+┌──────────────────────────────┐                     ┌──────────────────────────────────┐
+│  MCU (Zephyr sketch)         │  Router Bridge:      │  MPU (Python / web_ui)            │
+│  sketch/sketch.ino           │  sensor_data (2s)    │  python/main.py                    │
+│                               │  imu_data (100ms)     │                                    │
+│  A0      ── turbidity sensor │  gps_data (1s)          │  ├─ sensors.py (state + alerts)  │
+│  D4      ── DS18B20 (1-Wire) │ ────────────────────────▶│  ├─ data_store.py (InfluxDB)     │
+│  QWIIC   ── MPU6050 IMU      │                          │  ├─ assets/ (static HTML/JS —    │
+│            (I2C4 = Wire1)    │  ◀────────────────────  │  │   CSS-3D capsule, no CDN)      │
+│  D20/D21 ── GPS (Serial3)    │  set_alert(bool)      │  └─ VideoObjectDetection             │
+│  LED3    ── alert indicator  │                     │        (YOLO-X / custom Edge Impulse) │
+└──────────────────────────────┘                     └──────────────────┬─────────────────────┘
+                                                                          │ :7000 (Socket.IO)
+                                                                          ▼
+                                                           Browser dashboard (LAN) — camera pane
+                                                           and orientation view refresh at 10 Hz,
+                                                           independent of the rest of the page
 ```
 
 Bricks used (`app.yaml`):
 
 | Brick | Purpose |
 |---|---|
-| `arduino:video_object_detection` | Runs the YOLO-X object-detection model against the USB camera stream |
-| `arduino:streamlit_ui` | Hosts the web dashboard on port 7000 |
+| `arduino:video_object_detection` | Runs the object-detection model (built-in YOLO-X, or a custom Edge Impulse export) against the USB camera stream |
+| `arduino:web_ui` | Hosts the always-on Python process and the static Socket.IO dashboard on port 7000 |
 | `arduino:dbstorage_tsstore` | InfluxDB-backed time series storage for sensor history |
+
+> **Note:** this app originally ran on `arduino:streamlit_ui`. It was
+> rewritten onto `arduino:web_ui` because Streamlit only executes app code
+> the first time a browser opens the dashboard — on an unattended buoy
+> deployment where nobody opens the dashboard, the Bridge providers, camera/
+> AI detector, and InfluxDB storage would never start at all. `web_ui` is a
+> plain always-on process: everything below `App.run()` starts the instant
+> the app boots, dashboard or not. Sections 2.1–2.9 below predate this
+> rewrite and describe Streamlit-era bugs that no longer apply to the
+> current `assets/`-based dashboard; kept for historical record.
 
 ---
 
@@ -223,6 +235,7 @@ pure render code safe to re-run.
 | Turbidity (e.g. SEN0189, analog) | `A0` | 3.3 V ref, 10-bit ADC, oversampled ×8 |
 | DS18B20 temperature probe (1-Wire) | `D2` | needs a 4.7 kΩ pull-up between data and 3.3 V if not already on the module |
 | MPU6050 IMU (accel + gyro) | **QWIIC connector** (`Wire1` = I2C4 — see §2.5b, *not* plain `Wire`) | default address `0x68` (`AD0` low); mount the breakout flat with its silkscreen **X-axis arrow pointing toward the bow** — the sketch reads `getAngleX()`/`getAngleY()`/`getAngleZ()` as roll/pitch/yaw assuming that mounting |
+| GPS module (NMEA, e.g. Adafruit Ultimate GPS) | `D20` (RX) / `D21` (TX) — **`Serial3`**, fixed by the board's devicetree pin muxing | wire GPS TX → D20, GPS RX → D21; reports fix/lat/lon/speed/course/satellites at 1 Hz once it has a lock |
 | USB camera | any USB-A port (use a USB-C hub if needed) | required for object detection |
 | Alert LED | onboard `LED3_R` / `LED3_G` (RGB, MCU-controllable) | green = OK, red = ALERT |
 
@@ -374,13 +387,15 @@ sketch build looks stale, and `arduino-app-cli app restart ...`.
 marine-sentinel/
 ├── app.yaml              # manifest + brick declarations
 ├── python/
-│   ├── main.py            # Streamlit dashboard + Bridge/AI wiring (entry point)
+│   ├── main.py            # web_ui backend + Bridge/AI wiring (entry point)
 │   ├── sensors.py          # unit conversion, alert rules, shared thread-safe state
-│   ├── data_store.py       # InfluxDB (TimeSeriesStore) wrapper
-│   └── orientation_view.py # CSS-3D capsule widget (no CDN/JS deps)
+│   └── data_store.py       # InfluxDB (TimeSeriesStore) wrapper
 ├── sketch/
-│   ├── sketch.ino          # MCU: sensor + IMU sampling, LED alert, Bridge
+│   ├── sketch.ino          # MCU: sensor + IMU + GPS sampling, LED alert, Bridge
 │   └── sketch.yaml         # MCU build profile + library versions
+├── assets/                # static dashboard: index.html, app.js, style.css
+│                           # (CSS-3D capsule widget, no CDN/JS deps, pushed
+│                           #  live updates over Socket.IO)
 └── README.md
 ```
 
@@ -390,6 +405,30 @@ marine-sentinel/
 
 Keep this section updated with dated entries as the project evolves —
 newest first.
+
+### 2026-09-11
+- Added GPS: `sketch.ino` now reads NMEA sentences from a GPS module over
+  `Serial3` (fixed to `D20`/`D21` by the board's pin muxing — not the usual
+  `D11`/`D12` and no `SoftwareSerial` available on this Zephyr core) via
+  `TinyGPSPlus`, and reports fix/lat/lon/speed/course/satellite-count to
+  Python once a second over a new `gps_data` Bridge message. Surfaced live
+  on the dashboard alongside the water-quality and orientation tiles.
+- Rewrote the Python app from `arduino:streamlit_ui` onto `arduino:web_ui`:
+  Streamlit only runs app code the first time a browser opens the dashboard,
+  which meant an unattended buoy deployment — where nobody opens the
+  dashboard — never started the Bridge providers, camera/AI detector, or
+  InfluxDB storage at all. `web_ui` is a plain always-on process, so
+  everything starts at boot regardless of whether a browser ever connects.
+  The dashboard itself moved from Streamlit fragments to a static HTML/JS
+  page (`assets/`) pushed live updates over Socket.IO — the CSS-3D capsule
+  widget, camera pane, and metrics all carried over, just re-plumbed.
+- Made camera/detector startup retry-safe: `VideoObjectDetection.start()`
+  raising `CameraOpenError` (USB camera unplugged/busy/still enumerating) no
+  longer kills the whole Python process — it retries in the background every
+  10 s while the dashboard, sensors, and storage keep running.
+- Verified on-device: `app logs` shows `gps_data` messages arriving at 1 Hz
+  once the module has a fix, and the dashboard, sensors, and camera all come
+  up on boot without a browser ever connecting to the app.
 
 ### 2026-09-03 (2)
 - Fixed the MPU6050 not being detected at all: the QWIIC connector on the
