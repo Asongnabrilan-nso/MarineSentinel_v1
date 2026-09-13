@@ -24,7 +24,8 @@ Arduino UNO Q.**
 5. [Build guide](#build-guide)
 6. [Repository layout](#repository-layout)
 7. [Troubleshooting](#troubleshooting)
-8. [Credits](#credits)
+8. [Conclusion](#conclusion)
+9. [Credits](#credits)
 
 ---
 
@@ -331,6 +332,46 @@ That file is also the place to look for:
 - [Loading a different Edge AI model](firmware/README.md#4-loading-a-different-edge-ai-model-edge-impulse)
 - The dated [changelog](firmware/README.md#7-changelog) of what changed and
   why
+
+## Conclusion
+
+MarineSentinel started from a simple frustration: the water that needed
+watching the most was the water nobody could afford to watch. A
+US$25,000–40,000 sonde was never going to sit in a river in Cameroon, so the
+only way to get numbers was to build something that could.
+
+What's in this repo is a buoy built almost entirely from parts on a local
+bench — turbidity, temperature, tilt, GPS, and a camera with an AI model
+that already knows what a plastic bottle looks like — running on one board,
+reporting itself over a dashboard with no internet needed. It isn't a
+finished monitoring network. It's proof that a $300, locally-sourced
+instrument can do the job a $30,000 imported one was priced to do, and that
+someone at the water's edge can read it on their phone.
+
+It's also not a cleanup tool, and it doesn't pretend to be. MarineSentinel's
+job stops at telling someone *where* the debris is and *when* the water
+turns bad — the cleanup crew, the health warning, the funding case built on
+real data instead of a single photo, that's for whoever picks up what it
+reports.
+
+**What's next:**
+
+- **Longer deployments** — the current build is bench- and water-tested in
+  short runs; the real test is weeks on the water unattended.
+- **A magnetometer** — to fix the yaw drift (see
+  [`firmware/README.md` §2.6](firmware/README.md#26-yaw-has-no-accelerometer-equivalent-correction--it-will-drift))
+  and give the buoy a real compass heading, not just relative orientation.
+- **More water-quality sensors** (pH, dissolved solids) — the sensor
+  pipeline is built to make this a small, worked-example change, not a
+  redesign (see
+  [`firmware/README.md` §5](firmware/README.md#5-adding-more-sensors)).
+- **More than one buoy** — a single sentinel gives you a point reading; a
+  handful along a coastline gives you a map of where the pollution is
+  actually coming from.
+
+Every file, every model, every STL is in this repo. If the water near you
+has the same problem — no data because no one can afford to collect it —
+this is built to be cloned, not just read about.
 
 ## Credits
 
