@@ -4,6 +4,6 @@ ports: []
 bricks:
 - arduino:video_object_detection:
     model: yolox-object-detection
-- arduino:streamlit_ui: {}
+- arduino:web_ui: {}
 - arduino:dbstorage_tsstore: {}
 icon: 🌊

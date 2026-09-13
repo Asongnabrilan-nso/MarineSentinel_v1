@@ -7,15 +7,23 @@
 #include <DallasTemperature.h>
 #include <Wire.h>
 #include <MPU6050_light.h>
+#include <TinyGPSPlus.h>
 
 // ── Pin assignments ───────────────────────────────────────────────────────────
 #define TURBIDITY_PIN   A0   // Analog turbidity sensor (SEN0189 or equivalent)
-#define DS18B20_PIN     D2   // DS18B20 1-Wire data line
+#define DS18B20_PIN     D4   // DS18B20 1-Wire data line
 // MPU6050 IMU — on the QWIIC connector, default address 0x68 (AD0 low).
 // The board exposes three I2C buses (devicetree order: i2c2, i2c4, i2c3),
 // mapped to Wire=I2C2 (digital pins D20/D21), Wire1=I2C4 (QWIIC connector),
 // Wire2=I2C3 (analog pins A4/A5) — the QWIIC connector is Wire1, NOT the
 // plain default Wire.
+//
+// GPS module — NMEA over the board's third hardware UART (Serial3).
+// IMPORTANT: this is fixed to D20 (RX) / D21 (TX) by the board's devicetree
+// pin muxing, NOT D11/D12 — D11/D12 (PB15/PB14) are plain GPIO/PWM pins with
+// no UART peripheral behind them here, and this Zephyr core ships no
+// SoftwareSerial to bit-bang one. Wire the module: GPS TX -> D20, GPS RX -> D21.
+#define GPS_BAUD 9600
 
 // ── Sensor driver objects ─────────────────────────────────────────────────────
 OneWire           oneWire(DS18B20_PIN);
@@ -25,13 +33,16 @@ MPU6050            imu(Wire1);   // Wire1 = I2C4 = the QWIIC connector
 bool                imuReady = false;   // false if the MPU6050 didn't ACK on I2C at boot
 byte                imuStatus = 255;    // imu.begin() return code, reported to Python for diagnostics
 byte                imuScanAddr = 0;    // first address that ACKed a bus scan on failure, 0 = none
+TinyGPSPlus         gps;
 
 // ── Sampling configuration ────────────────────────────────────────────────────
 const unsigned long SAMPLE_INTERVAL_MS   = 2000;   // 2 s between turbidity/temp readings
 const unsigned long IMU_SEND_INTERVAL_MS = 100;    // 10 Hz orientation updates to the MPU
+const unsigned long GPS_SEND_INTERVAL_MS = 1000;   // 1 Hz GPS updates to Python
 const int           ADC_OVERSAMPLE       = 8;       // average N reads to reduce noise
 unsigned long       lastSampleMs         = 0;
 unsigned long       lastImuSendMs        = 0;
+unsigned long       lastGpsSendMs        = 0;
 
 // ── LED status helpers (UNO Q LEDs are active-low) ───────────────────────────
 // LED3 (RGB, MCU-controllable): use Green = OK, Red = ALERT
@@ -97,6 +108,9 @@ void setup() {
   matrix.begin();
   matrix.clear();
 
+  // GPS — Serial3 (fixed to D20/D21, see the pin-assignment note above)
+  Serial3.begin(GPS_BAUD);
+
   // Router Bridge
   Bridge.begin();
   Bridge.provide("set_alert", setAlert);
@@ -125,6 +139,23 @@ void loop() {
       // missed entirely. Repeating it guarantees Python sees it eventually.
       Bridge.notify("imu_status", imuStatus, imuScanAddr);
     }
+  }
+
+  // ── GPS: feed the NMEA parser on every loop tick, report at 1 Hz ─────────
+  while (Serial3.available()) {
+    gps.encode(Serial3.read());
+  }
+
+  if (now - lastGpsSendMs >= GPS_SEND_INTERVAL_MS) {
+    lastGpsSendMs = now;
+    bool fix = gps.location.isValid() && gps.location.age() < 5000;
+    Bridge.notify("gps_data",
+                   fix,
+                   fix ? gps.location.lat() : 0.0,
+                   fix ? gps.location.lng() : 0.0,
+                   (fix && gps.speed.isValid())  ? gps.speed.kmph()  : 0.0,
+                   (fix && gps.course.isValid()) ? gps.course.deg() : 0.0,
+                   (int)gps.satellites.value());
   }
 
   if (now - lastSampleMs < SAMPLE_INTERVAL_MS) return;

@@ -1,0 +1,173 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) 2026 MarineSentinel Project
+SPDX-License-Identifier: MPL-2.0
+-->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MarineSentinel</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🌊 MarineSentinel — Marine Water Quality Monitor</h1>
+      <span id="conn-status" class="conn-status offline">Connecting…</span>
+    </header>
+
+    <section class="metrics-row">
+      <div class="card">
+        <div class="card-label">Turbidity <span class="sim-badge" id="turbidity-sim-badge" hidden>TEST DATA</span></div>
+        <div class="card-value" id="turbidity-value">-- NTU</div>
+        <div class="card-detail" id="turbidity-label">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Water Temperature</div>
+        <div class="card-value" id="temp-value">-- °C</div>
+        <div class="card-detail" id="temp-label">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">System Status</div>
+        <div class="card-value" id="status-value">OK</div>
+        <div class="card-detail" id="status-detail">All clear</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Last AI Detection</div>
+        <div class="card-value" id="detection-value">None</div>
+        <div class="card-detail" id="detection-detail">No objects</div>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="live-panel">
+      <h2>📷 Live Camera — Edge AI Monitoring</h2>
+      <div class="camera-frame">
+        <img id="camera-image" alt="Live camera feed" hidden />
+        <div id="camera-placeholder" class="camera-placeholder">Waiting for camera feed…</div>
+      </div>
+      <p class="caption" id="camera-caption"></p>
+
+      <hr />
+
+      <h2>🧭 Orientation — MPU6050 IMU</h2>
+      <div class="orientation-row">
+        <div class="capsule-col">
+          <div class="scene">
+            <div class="rig" id="capsule-rig">
+              <div class="face top">▲ UP</div>
+              <div class="face bottom">▼ BILGE</div>
+              <div class="face hull-a">MARINESENTINEL</div>
+              <div class="face hull-b">MARINESENTINEL</div>
+              <div class="face bow">BOW ▶</div>
+              <div class="face stern">STERN</div>
+            </div>
+          </div>
+          <p class="caption" id="orientation-caption">Upright</p>
+        </div>
+        <div class="orientation-metrics-col">
+          <div class="metric-line">
+            <span class="metric-name">Roll</span>
+            <span class="metric-num" id="roll-value">0.0°</span>
+          </div>
+          <div class="metric-line">
+            <span class="metric-name">Pitch</span>
+            <span class="metric-num" id="pitch-value">0.0°</span>
+          </div>
+          <div class="metric-line">
+            <span class="metric-name">Yaw (heading)</span>
+            <span class="metric-num" id="yaw-value">0.0°</span>
+          </div>
+          <div class="metric-note">drifts w/o magnetometer</div>
+          <svg id="orientation-chart" class="chart" viewBox="0 0 300 120" preserveAspectRatio="none">
+            <polyline id="roll-line" class="line-roll" points=""></polyline>
+            <polyline id="pitch-line" class="line-pitch" points=""></polyline>
+          </svg>
+          <div class="legend">
+            <span class="legend-item"><i class="swatch swatch-roll"></i>Roll (°)</span>
+            <span class="legend-item"><i class="swatch swatch-pitch"></i>Pitch (°)</span>
+          </div>
+        </div>
+      </div>
+
+      <hr />
+
+      <h2>🛰️ GPS — Position Tracking</h2>
+      <div class="gps-row">
+        <div class="metric-line">
+          <span class="metric-name">Fix Status</span>
+          <span class="metric-num" id="gps-fix-value">Searching…</span>
+        </div>
+        <div class="metric-line">
+          <span class="metric-name">Latitude</span>
+          <span class="metric-num" id="gps-lat-value">--</span>
+        </div>
+        <div class="metric-line">
+          <span class="metric-name">Longitude</span>
+          <span class="metric-num" id="gps-lon-value">--</span>
+        </div>
+        <div class="metric-line">
+          <span class="metric-name">Speed</span>
+          <span class="metric-num" id="gps-speed-value">-- km/h</span>
+        </div>
+        <div class="metric-line">
+          <span class="metric-name">Course</span>
+          <span class="metric-num" id="gps-course-value">--°</span>
+        </div>
+        <div class="metric-line">
+          <span class="metric-name">Satellites</span>
+          <span class="metric-num" id="gps-sat-value">0</span>
+        </div>
+      </div>
+      <p class="caption" id="gps-caption">Waiting for GPS fix…</p>
+    </section>
+
+    <hr />
+
+    <section class="middle-row">
+      <div class="history-col">
+        <h2>Sensor History</h2>
+        <div class="chart-block">
+          <div class="chart-title">Turbidity (NTU)</div>
+          <svg id="turbidity-chart" class="chart" viewBox="0 0 600 140" preserveAspectRatio="none">
+            <polyline id="turbidity-line" class="line-turbidity" points=""></polyline>
+          </svg>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">Temperature (°C)</div>
+          <svg id="temp-chart" class="chart" viewBox="0 0 600 140" preserveAspectRatio="none">
+            <polyline id="temp-line" class="line-temp" points=""></polyline>
+          </svg>
+        </div>
+        <p id="sensor-waiting" class="caption">Waiting for sensor data from MCU…</p>
+      </div>
+
+      <div class="side-col">
+        <h2>Edge AI — Debris Log</h2>
+        <ul id="debris-log" class="event-log">
+          <li class="caption">No debris detected yet.</li>
+        </ul>
+
+        <h2>Active Detections</h2>
+        <div id="active-detections">
+          <p class="caption">Camera scanning…</p>
+        </div>
+      </div>
+    </section>
+
+    <hr />
+
+    <section class="alerts-section">
+      <h2>Alerts</h2>
+      <div id="alerts-list">
+        <div class="alert-ok">No active water quality alerts.</div>
+      </div>
+    </section>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="libs/arduino.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

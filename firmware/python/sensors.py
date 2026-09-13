@@ -104,6 +104,7 @@ class SensorState:
     def __init__(self):
         self._lock = threading.Lock()
         self.turbidity_ntu: float = 0.0
+        self.turbidity_simulated: bool = False
         self.temperature_c: float = 0.0
         self.roll_deg: float = 0.0
         self.pitch_deg: float = 0.0
@@ -116,14 +117,23 @@ class SensorState:
         self.camera_frame: bytes | None = None     # latest annotated JPEG frame
         self.camera_frame_ts: float = 0.0
 
+        self.gps_fix: bool = False
+        self.gps_lat: float = 0.0
+        self.gps_lon: float = 0.0
+        self.gps_speed_kmph: float = 0.0
+        self.gps_course_deg: float = 0.0
+        self.gps_satellites: int = 0
+        self.gps_fix_ts: float = 0.0
+
         self._turbidity_history: deque = deque(maxlen=self._HISTORY)
         self._temp_history:      deque = deque(maxlen=self._HISTORY)
         self._roll_history:      deque = deque(maxlen=self._HISTORY)
         self._pitch_history:     deque = deque(maxlen=self._HISTORY)
 
-    def update_sensors(self, turbidity_ntu: float, temperature_c: float):
+    def update_sensors(self, turbidity_ntu: float, temperature_c: float, turbidity_simulated: bool = False):
         with self._lock:
             self.turbidity_ntu = turbidity_ntu
+            self.turbidity_simulated = turbidity_simulated
             self.temperature_c = temperature_c
             ts = time.time()
             self._turbidity_history.append((ts, turbidity_ntu))
@@ -169,10 +179,23 @@ class SensorState:
             self.camera_frame = jpeg_bytes
             self.camera_frame_ts = time.time()
 
+    def update_gps(self, fix: bool, lat: float, lon: float,
+                   speed_kmph: float, course_deg: float, satellites: int):
+        with self._lock:
+            self.gps_fix = fix
+            self.gps_satellites = satellites
+            if fix:
+                self.gps_lat = lat
+                self.gps_lon = lon
+                self.gps_speed_kmph = speed_kmph
+                self.gps_course_deg = course_deg
+                self.gps_fix_ts = time.time()
+
     def snapshot(self):
         with self._lock:
             return dict(
                 turbidity_ntu = self.turbidity_ntu,
+                turbidity_simulated = self.turbidity_simulated,
                 temperature_c = self.temperature_c,
                 roll_deg      = self.roll_deg,
                 pitch_deg     = self.pitch_deg,
@@ -186,4 +209,11 @@ class SensorState:
                 pitch_history     = list(self._pitch_history),
                 camera_frame      = self.camera_frame,
                 camera_frame_age  = (time.time() - self.camera_frame_ts) if self.camera_frame else None,
+                gps_fix           = self.gps_fix,
+                gps_lat           = self.gps_lat,
+                gps_lon           = self.gps_lon,
+                gps_speed_kmph    = self.gps_speed_kmph,
+                gps_course_deg    = self.gps_course_deg,
+                gps_satellites    = self.gps_satellites,
+                gps_age_sec       = (time.time() - self.gps_fix_ts) if self.gps_fix else None,
             )

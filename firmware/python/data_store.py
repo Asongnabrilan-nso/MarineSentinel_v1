@@ -29,10 +29,13 @@ class SensorStore:
         if self._started:
             self._db.stop()
 
-    def record(self, turbidity_ntu: float, temperature_c: float):
+    def record(self, turbidity_ntu: float, temperature_c: float, store_turbidity: bool = True):
         if not self._started:
             return
-        self._db.write_sample(self.FIELD_TURBIDITY, turbidity_ntu)
+        # store_turbidity=False skips simulated bench-test readings so they
+        # never mix into the real turbidity history (see main.py SIMULATE_TURBIDITY).
+        if store_turbidity:
+            self._db.write_sample(self.FIELD_TURBIDITY, turbidity_ntu)
         self._db.write_sample(self.FIELD_TEMP, temperature_c)
 
     def record_orientation(self, roll_deg: float, pitch_deg: float, yaw_deg: float):
